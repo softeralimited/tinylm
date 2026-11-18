@@ -2,7 +2,7 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "tinylm",
-  "main": "",
+  "main": "index.html",
   "compatibility_date": "2026-11-01",
   "assets": {
     "directory": "./public",
