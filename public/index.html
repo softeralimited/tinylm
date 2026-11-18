@@ -1,0 +1,154 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Transformer Lab</title>
+<style>
+  body { font-family: system-ui; max-width: 900px; margin: 24px auto; padding: 0 16px; }
+  button { margin: 4px; padding: 8px 12px; }
+  pre { background: #f4f4f4; padding: 12px; overflow-x: auto; }
+  .matrix { display: grid; gap: 2px; margin-top: 10px; }
+  .cell { width: 38px; height: 26px; display: flex; align-items: center;
+          justify-content: center; font-size: 12px; color: white; border-radius: 3px; }
+  .tokens span { display: inline-block; margin: 3px; padding: 5px 8px;
+                 background: #eef; border-radius: 5px; }
+</style>
+</head>
+<body>
+
+<h1>Transformer Lab</h1>
+<p>Type a sentence. The app tokenizes it, creates toy embeddings, and shows causal self-attention.</p>
+
+<input id="text" value="the cat sat" style="width:100%;padding:10px">
+<div>
+  <button onclick="run()">Run</button>
+  <button onclick="toggleMask()">Causal mask: <span id="maskState">ON</span></button>
+</div>
+
+<h2>Tokens</h2>
+<div id="tokens" class="tokens"></div>
+
+<h2>Embeddings</h2>
+<pre id="embeddings"></pre>
+
+<h2>Attention weights</h2>
+<div id="attention" class="matrix"></div>
+
+<h2>What is happening?</h2>
+<pre id="explain"></pre>
+
+<script>
+let useMask = true;
+
+// Tiny vocabulary. A real tokenizer uses subwords, but this is enough to teach the idea.
+const vocab = {
+  "<unk>": 0, "the": 1, "cat": 2, "sat": 3, "on": 4,
+  "mat": 5, "dog": 6, "ran": 7, "fast": 8
+};
+
+function tokenize(text) {
+  return text.toLowerCase().split(/\s+/).filter(Boolean);
+}
+
+// Deterministic toy embeddings: 4 dimensions per token.
+function embed(token, position) {
+  const id = vocab[token] ?? 0;
+  const base = [
+    Math.sin(id * 1.1),
+    Math.cos(id * 1.7),
+    Math.sin(id * 2.3),
+    Math.cos(id * 2.9)
+  ];
+  // Positional encoding, simplified.
+  const positional = [
+    Math.sin(position / 10),
+    Math.cos(position / 10),
+    Math.sin(position / 20),
+    Math.cos(position / 20)
+  ];
+  return base.map((v, i) => v + positional[i]);
+}
+
+function dot(a, b) {
+  return a.reduce((sum, x, i) => sum + x * b[i], 0);
+}
+
+function softmax(values) {
+  const max = Math.max(...values);
+  const exps = values.map(v => Math.exp(v - max));
+  const total = exps.reduce((a, b) => a + b, 0);
+  return exps.map(v => v / total);
+}
+
+function run() {
+  const tokens = tokenize(document.getElementById("text").value);
+  const embeddings = tokens.map(embed);
+
+  // In a real Transformer, Q, K, and V come from learned weight matrices.
+  // Here, we use the embeddings directly to make the idea visible.
+  const scores = [];
+
+  for (let i = 0; i < tokens.length; i++) {
+    const row = [];
+    for (let j = 0; j < tokens.length; j++) {
+      let score = dot(embeddings[i], embeddings[j]) / Math.sqrt(4);
+
+      // Causal mask: token i cannot attend to future token j.
+      if (useMask && j > i) score = -Infinity;
+
+      row.push(score);
+    }
+    scores.push(softmax(row));
+  }
+
+  document.getElementById("tokens").innerHTML =
+    tokens.map(t => `<span>${t}</span>`).join("");
+
+  document.getElementById("embeddings").textContent =
+    tokens.map((t, i) =>
+      `${t}: [${embeddings[i].map(x => x.toFixed(2)).join(", ")}]`
+    ).join("\n");
+
+  const grid = document.getElementById("attention");
+  grid.style.gridTemplateColumns = `repeat(${tokens.length}, 40px)`;
+  grid.innerHTML = "";
+
+  scores.forEach(row => {
+    row.forEach(weight => {
+      const cell = document.createElement("div");
+      cell.className = "cell";
+      cell.textContent = weight.toFixed(2);
+      cell.style.background = `rgba(30,90,200,${weight})`;
+      grid.appendChild(cell);
+    });
+  });
+
+  document.getElementById("explain").textContent =
+`1. Tokenization: "${tokens.join(" | ")}"
+
+2. Embeddings: every token becomes a numeric vector.
+   Position information is added so the model knows word order.
+
+3. Self-attention: each token asks, "Which earlier tokens matter to me?"
+   The colored matrix shows those attention weights.
+
+4. Causal mask: ${useMask
+? "ON — each token may look only at itself and earlier tokens."
+: "OFF — tokens can look ahead, which is useful for understanding text but not for generating text one token at a time."}
+
+5. A real Transformer stacks many attention layers and uses learned
+   Query, Key, and Value projections. This demo uses the embeddings
+   directly so you can see the core computation.`;
+}
+
+function toggleMask() {
+  useMask = !useMask;
+  document.getElementById("maskState").textContent = useMask ? "ON" : "OFF";
+  run();
+}
+
+run();
+</script>
+
+</body>
+</html>
